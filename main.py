@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from discord.ui import Button, View
+from discord.ui import Button, View, Select
 import random
 from items import items_prices
 
@@ -34,17 +34,6 @@ async def shop(ctx):
     else:
         await ctx.send("У торговца сегодня нет товаров.")
 
-@bot.command(description="Бросок кубика")
-async def roll(ctx, dice: str):
-    try:
-        rolls, limit = map(int, dice.split('d'))
-    except Exception:
-        await ctx.send('Неправильный формат! Используйте XdY, где X - количество бросков, Y - количество граней')
-        return
-
-    result = ', '.join(str(random.randint(1, limit)) for r in range(rolls))
-    await ctx.send(result)
-
 ##############################################################
 
 current_round = 1
@@ -59,7 +48,7 @@ async def start_action(ctx_or_interaction):
 
 async def next_action(ctx_or_interaction):
     global current_round
-    current_round_copy = current_round
+    current_round_copy = current_round  # Создаем локальную копию переменной current_round
     if isinstance(ctx_or_interaction, discord.Interaction):
         # Получаем текущее сообщение
         message = ctx_or_interaction.message
@@ -75,17 +64,62 @@ async def next_action(ctx_or_interaction):
 
 async def end_action(ctx_or_interaction):
     if isinstance(ctx_or_interaction, discord.Interaction):
-        # Получаем текущее сообщение
-        message = ctx_or_interaction.message
-        # Удаляем предыдущее сообщение
-        await message.edit(content='Бой закончен')
+        # Отправляем новое сообщение о завершении боя
+        await ctx_or_interaction.response.send_message('Бой закончен')
     else:
+        # Отправляем новое сообщение о завершении боя
         await ctx_or_interaction.send('Бой закончен')
+
+@bot.command(description="Бросок кубика")
+async def roll(ctx, dice: str = None):
+    if dice is None:
+        # Создаем экземпляр View для отображения кнопок
+        view = discord.ui.View()
+
+        # Создаем кнопку выбора количества бросков
+        roll_quantity_select = discord.ui.Select(
+            placeholder="Выберите количество бросков",
+            options=[
+                discord.SelectOption(label=str(i), value=str(i)) for i in range(1, 21)
+            ],
+            custom_id='roll_quantity_select'
+        )
+        view.add_item(roll_quantity_select)
+
+        # Отправляем сообщение с кнопками
+        await ctx.send("Выберите количество бросков:", view=view)
+    else:
+        try:
+            rolls, limit = map(int, dice.split('d'))
+        except Exception:
+            await ctx.send('Неправильный формат! Используйте XdY, где X - количество бросков, Y - количество граней')
+            return
+
+        result = ', '.join(str(random.randint(1, limit)) for r in range(rolls))
+        await ctx.send(result)
+
+@bot.command()
+async def clear(ctx, amount: int = 5):
+    if ctx.author.guild_permissions.manage_messages:
+        try:
+            messages = []
+            async for message in ctx.channel.history(limit=None, oldest_first=True):
+                messages.append(message)
+                if len(messages) == amount + 5:
+                    break
+            await ctx.channel.delete_messages(messages[:-5])
+            await ctx.send(f'Успешно удалены все сообщения, кроме последних 5!', delete_after=5)
+        except discord.Forbidden:
+            await ctx.send("У меня нет прав на удаление сообщений.")
+        except discord.HTTPException:
+            await ctx.send("Не удалось удалить сообщения.")
+    else:
+        await ctx.send("У вас нет прав на выполнение этой команды.")
 
 ##############################################################
 
 @bot.command(description='Начало боя')
-async def Start(ctx):
+async def start(ctx):
     await start_action(ctx)
 
 @bot.command(description='Конец раунда')
@@ -93,7 +127,7 @@ async def Next(ctx):
     await next_action(ctx)
     
 @bot.command(description="Конец боя")
-async def End(ctx):
+async def end(ctx):
     await end_action(ctx)
 
 #------------------------------------------------------------------------------------
@@ -103,13 +137,13 @@ class CustomButton(discord.ui.Button['CustomButton']):
 
     async def callback(self, interaction: discord.Interaction):
         if self.label == 'Start':
-            await Start(interaction)
+            await start_action(interaction)
         elif self.label == 'Next':
-            await Next(interaction)
+            await next_action(interaction)
         elif self.label == 'End':
-            await End(interaction)
+            await end_action(interaction)
         elif self.label == 'Roll':
-            await roll(interaction)
+            await roll_action(interaction)
 
 @bot.command(description="Отображает меню с кнопками")
 async def menu(ctx):
@@ -131,7 +165,9 @@ async def on_button_click(interaction):
     elif interaction.custom_id == 'next_button':
         await next_action(interaction)
     elif interaction.custom_id == 'end_button':
-        await end(interaction)
+        await end_action(interaction)
+    elif interaction.custom_id == 'roll_button':
+        await roll_action(interaction)
 
 # Запуск бота
 bot.run('')
