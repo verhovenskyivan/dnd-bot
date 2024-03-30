@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dnd-bot
+spec:
+  containers:
+  - name: dnd-bot
+    image: verhovensky/dnd-bot:tagname
+    ports:
+    - containerPort: 80
